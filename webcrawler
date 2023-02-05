@@ -154,6 +154,26 @@ def getFlag(msg):
     else:
         print("No h2 tag found.")
 
+def start_crawling(msg, sock, host, cookie3, cookie4):
+    parser = FakebookHTMLParser()
+    parser.feed(msg)
+    while len(crawl_pages) != 0:
+        curr = (crawl_pages.popleft())
+
+        if curr not in visited_links:
+            send_get_request(curr, sock, host, cookie1=cookie3, cookie2=cookie4)
+            msg = receive_msg(sock)
+
+            parser.feed(msg)
+            # getFlag(msg)
+
+            # print(crawl_pages)
+            visited_links.add(curr)
+            #i = i + 1
+            if len(secret_flags) == 5:
+                break
+
+
 def main():
     host = "Host: project2.5700.network"
     root_path = "/"
@@ -206,37 +226,24 @@ def main():
     msg = receive_msg(sock)
     # print(msg)
 
-    parser = FakebookHTMLParser()
-    parser.feed(msg)
+    start_crawling(msg, sock, host, cookie3, cookie4)
+
+
     #print(fakebook_pages)
     #print(crawl_pages)
     #print(visited_links)
 
-    for each in fakebook_pages:
-        send_get_request(each, sock, host, cookie1=cookie3, cookie2=cookie4)
-        msg = receive_msg(sock)
+    #for each in fakebook_pages:
+     #   send_get_request(each, sock, host, cookie1=cookie3, cookie2=cookie4)
+      #  msg = receive_msg(sock)
         #print(msg)
 
     #create function for queue in
-    i =0
-    while len(crawl_pages) != 0:
-        curr = (crawl_pages.popleft())
-    
-        if curr not in visited_links:
-            send_get_request(curr, sock, host, cookie1=cookie3, cookie2=cookie4)
-            msg = receive_msg(sock)
-
-            parser.feed(msg)
-            #getFlag(msg)
-
-            #print(crawl_pages)
-            visited_links.add(curr)
-            i = i+1
-            if len(secret_flags) == 5:
-                break
-
+    #i =0
 
     print(secret_flags)
+
+    sock.close()
 
 
 if __name__ == "__main__":
