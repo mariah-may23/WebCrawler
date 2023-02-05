@@ -18,7 +18,7 @@ secret_flags = list()
 
 class FakebookHTMLParser(HTMLParser):
     is_h2 = False
-    accumulated_data =''
+    accumulated_data = ''
 
     def handle_starttag(self, tag, attrs):
 
@@ -34,9 +34,9 @@ class FakebookHTMLParser(HTMLParser):
         if tag == "h2":
             for attributes in attrs:
                 if "secret_flag" in attributes:
-                    #secret_flags.append("1")
+                    # secret_flags.append("1")
                     self.is_h2 = True
-                    #print("YES******************************************************")
+                    # print("YES******************************************************")
                     # tree = ET.parse(self.msg.encode())
                     # print(tree.toS)
                     # print(tree.getroot())
@@ -46,7 +46,7 @@ class FakebookHTMLParser(HTMLParser):
             self.is_h2 = False
             if self.accumulated_data != '':
                 flag = self.accumulated_data.split()
-                #print(flag)
+                # print(flag)
                 secret_flags.append(flag[1])
                 print(flag[1])
             self.accumulated_data = ''
@@ -54,7 +54,6 @@ class FakebookHTMLParser(HTMLParser):
     def handle_data(self, data):
         if self.is_h2:
             self.accumulated_data += data
-
 
 
 def parse_cmd_line():
@@ -105,6 +104,7 @@ def send_get_request(path, sock, host, cookie1=None, cookie2=None):
 
 def receive_msg(sock):
     msg = sock.recv(4096).decode()
+    handle_error(msg)
     return msg
 
 
@@ -156,19 +156,6 @@ def login_user(sock, path, host, body_len, body, cookie1, cookie2):
     sock.send(post_msg.encode())
 
 
-def getFlag(msg):
-    soup = BeautifulSoup(msg, "html.parser")
-
-    h2_tag = soup.find("h2")
-    if h2_tag:
-        h2_text = h2_tag.text
-        print(h2_text)
-        print(msg)
-
-    else:
-        print("No h2 tag found.")
-
-
 def start_crawling(msg, sock, host, cookie3, cookie4):
     parser = FakebookHTMLParser()
     parser.feed(msg)
@@ -180,13 +167,30 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
             msg = receive_msg(sock)
 
             parser.feed(msg)
-            # getFlag(msg)
 
             # print(crawl_pages)
             visited_links.add(curr)
             # i = i + 1
             if len(secret_flags) == 5:
                 break
+
+
+def handle_error(msg):
+    # print(msg)
+    msg = msg.split()[1]
+    # print(msg)
+    if msg == "200" or "302":
+        pass
+    elif msg == "301":
+        sys.exit("Error 301 Occurred. Exiting program")
+    elif msg == "403":
+        sys.exit("Error 403 Occurred. Exiting program")
+    elif msg == "404":
+        sys.exit("Error 404 Occurred. Exiting program")
+    elif msg == "500":
+        sys.exit("Error 500 Occurred. Exiting program")
+    else:
+        sys.exit("Unknown error Occurred. Exiting program")
 
 
 def main():
@@ -215,6 +219,7 @@ def main():
     # check message for login page
     msg = receive_msg(sock)
     # print(msg)
+    # print(msg.split())
 
     # retrieving csrf cookie and middle token
     cookie2 = cookie_jar(msg)
@@ -255,8 +260,8 @@ def main():
     # create function for queue in
     # i =0
 
-    #print(type(msg))
-    #print(secret_flags)
+    # print(type(msg))
+    # print(secret_flags)
 
     sock.close()
 
