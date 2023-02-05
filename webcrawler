@@ -17,31 +17,44 @@ secret_flags = list()
 
 
 class FakebookHTMLParser(HTMLParser):
+    is_h2 = False
+    accumulated_data =''
 
     def handle_starttag(self, tag, attrs):
+
         if tag == 'a':  # only looking at the links tags
             for attrs in attrs:  # attrs will be the href and the link in a tuple
-                #print(attrs)
+                # print(attrs)
                 link = attrs[1]  # the fakebook link or accounts/logout link
-                #print(link)
+                # print(link)
                 if link.startswith("/fakebook"):  # only want to fakebook pages link
-                    #visited_links.add(link)
+                    # visited_links.add(link)
                     crawl_pages.append(link)
+
         if tag == "h2":
             for attributes in attrs:
                 if "secret_flag" in attributes:
-                    secret_flags.append("1")
+                    #secret_flags.append("1")
                     self.is_h2 = True
-                    print("YES******************************************************")
+                    #print("YES******************************************************")
+                    # tree = ET.parse(self.msg.encode())
+                    # print(tree.toS)
+                    # print(tree.getroot())
 
-
-                #flag = attributes[1]
+    def handle_endtag(self, tag):
+        if tag == 'h2':
+            self.is_h2 = False
+            if self.accumulated_data != '':
+                flag = self.accumulated_data.split()
                 #print(flag)
-                #print(attributes)
+                secret_flags.append(flag[1])
+                print(flag[1])
+            self.accumulated_data = ''
 
     def handle_data(self, data):
-        if hasattr(self,'is_h2'):
-            pass
+        if self.is_h2:
+            self.accumulated_data += data
+
 
 
 def parse_cmd_line():
@@ -86,7 +99,7 @@ def send_get_request(path, sock, host, cookie1=None, cookie2=None):
               f'{host}\r\n' \
               f'Cookie: {cookie1}; {cookie2}\r\n\r\n'
 
-    #print(msg)
+    # print(msg)
     sock.send(msg.encode())
 
 
@@ -142,6 +155,7 @@ def login_user(sock, path, host, body_len, body, cookie1, cookie2):
     # print(post_msg)
     sock.send(post_msg.encode())
 
+
 def getFlag(msg):
     soup = BeautifulSoup(msg, "html.parser")
 
@@ -153,6 +167,7 @@ def getFlag(msg):
 
     else:
         print("No h2 tag found.")
+
 
 def start_crawling(msg, sock, host, cookie3, cookie4):
     parser = FakebookHTMLParser()
@@ -169,7 +184,7 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
 
             # print(crawl_pages)
             visited_links.add(curr)
-            #i = i + 1
+            # i = i + 1
             if len(secret_flags) == 5:
                 break
 
@@ -228,20 +243,20 @@ def main():
 
     start_crawling(msg, sock, host, cookie3, cookie4)
 
+    # print(fakebook_pages)
+    # print(crawl_pages)
+    # print(visited_links)
 
-    #print(fakebook_pages)
-    #print(crawl_pages)
-    #print(visited_links)
+    # for each in fakebook_pages:
+    #   send_get_request(each, sock, host, cookie1=cookie3, cookie2=cookie4)
+    #  msg = receive_msg(sock)
+    # print(msg)
 
-    #for each in fakebook_pages:
-     #   send_get_request(each, sock, host, cookie1=cookie3, cookie2=cookie4)
-      #  msg = receive_msg(sock)
-        #print(msg)
+    # create function for queue in
+    # i =0
 
-    #create function for queue in
-    #i =0
-
-    print(secret_flags)
+    #print(type(msg))
+    #print(secret_flags)
 
     sock.close()
 
