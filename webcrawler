@@ -1,0 +1,247 @@
+#!/usr/bin/env python
+
+import cgi
+import socket
+import sys
+import ssl
+from collections import deque
+from html.parser import HTMLParser
+import xml.etree.ElementTree as ET
+from urllib import parse
+
+from bs4 import BeautifulSoup
+
+visited_links = set()
+fakebook_pages = list()
+crawl_pages = deque()
+secret_flags = list()
+
+
+class FakebookHTMLParser(HTMLParser):
+
+    def handle_starttag(self, tag, attrs):
+        if tag == 'a':  # only looking at the links tags
+            for attrs in attrs:  # attrs will be the href and the link in a tuple
+                #print(attrs)
+                link = attrs[1]  # the fakebook link or accounts/logout link
+                #print(link)
+                if link.startswith("/fakebook"):  # only want to fakebook pages link
+                    fakebook_pages.append(link)
+                    #visited_links.add(link)
+                    crawl_pages.append(link)
+        if tag == "h2":
+            for attributes in attrs:
+                if "secret_flag" in attributes:
+                    secret_flags.append("1")
+                    self.is_h2 = True
+                    print("YES******************************************************")
+
+
+                #flag = attributes[1]
+                #print(flag)
+                #print(attributes)
+
+    def handle_data(self, data):
+        if hasattr(self,'is_h2'):
+            pass
+
+
+def parse_cmd_line():
+    args_cmd = sys.argv
+    username = ""
+    password = ""
+
+    file_name = sys.argv[0]
+    username = sys.argv[1]
+    password = sys.argv[2]
+
+    return username, password
+
+
+def create_socket():
+    port = 443
+
+    # http is based on TCP so create a TCP/IP socket
+    # building connection
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        context = ssl.create_default_context()
+        sock = socket.create_connection(('project2.5700.network', port))
+        wrapped_socket = context.wrap_socket(sock, server_hostname='project2.5700.network')
+        return wrapped_socket
+    except socket.error:
+        sys.exit("Connection error")
+
+
+def send_get_request(path, sock, host, cookie1=None, cookie2=None):
+    if cookie1 is None and cookie2 is None:  # no cookies given
+        msg = f'GET {path} HTTP/1.1\r\n' \
+              f'{host}\r\n\r\n'
+        # print(msg)
+    elif cookie2 is None:  # only cookie 1 given
+        msg = f'GET {path} HTTP/1.1\r\n' \
+              f'{host}\r\n' \
+              f'Cookie: {cookie1}\r\n\r\n'
+    else:  # both cookies given
+        msg = f'GET {path} HTTP/1.1\r\n' \
+              f'{host}\r\n' \
+              f'Cookie: {cookie1}; {cookie2}\r\n\r\n'
+
+    #print(msg)
+    sock.send(msg.encode())
+
+
+def receive_msg(sock):
+    msg = sock.recv(4096).decode()
+    return msg
+
+
+def cookie_jar(msg):
+    msg = msg.split()
+    # print(msg)
+    # find index and store first cookie
+    idx = msg.index("Set-Cookie:")
+    first_cookie = msg[idx + 1].strip(";")
+    # print(first_cookie)
+
+    try:  # try finding second cookie, if there is only one, then an error will occur
+        msg = msg[idx + 1:]
+        second_index = msg.index("Set-Cookie:")
+        second_cookie = msg[second_index + 1].strip(";")
+    except:  # error, meaning only 1 cookie exists
+        return first_cookie
+
+    return first_cookie, second_cookie
+
+
+def middle_token(msg):
+    msg = msg.split()
+    # print(msg)
+    index = msg.index('name="csrfmiddlewaretoken"')
+    token = msg[index + 1]
+    token = token.split("=")
+    token = token[1].replace('"', '')
+    token = token.replace(">", "")
+    # print(token)
+    return token
+
+
+def create_login_body(username, password, token):
+    return f'username={username}&' \
+           f'password={password}&' \
+           f'csrfmiddlewaretoken={token}&' \
+           'next=/fakebook'
+
+
+def login_user(sock, path, host, body_len, body, cookie1, cookie2):
+    post_msg = f'POST {path} HTTP/1.1\r\n' \
+               f'{host}\r\n' \
+               'Content-Type: application/x-www-form-urlencoded\r\n' \
+               f'Content-Length: {body_len}\r\n' \
+               f'Cookie: {cookie2}; {cookie1}\r\n\r\n' \
+               f'{body}'
+    # print(post_msg)
+    sock.send(post_msg.encode())
+
+def getFlag(msg):
+    soup = BeautifulSoup(msg, "html.parser")
+
+    h2_tag = soup.find("h2")
+    if h2_tag:
+        h2_text = h2_tag.text
+        print(h2_text)
+        print(msg)
+
+    else:
+        print("No h2 tag found.")
+
+def main():
+    host = "Host: project2.5700.network"
+    root_path = "/"
+    fakebook = "/fakebook/"
+    login_path = "/accounts/login/?next=/fakebook/"
+
+    username, password = parse_cmd_line()
+    # print(username, password)
+    sock = create_socket()
+
+    # get the root page
+    send_get_request(root_path, sock, host)
+
+    # check the received message
+    msg = receive_msg(sock)
+    # print(msg)
+
+    # store session cookie
+    cookie_1 = cookie_jar(msg)
+
+    # send get request for login page
+    send_get_request(login_path, sock, host, cookie1=cookie_1)
+
+    # check message for login page
+    msg = receive_msg(sock)
+    # print(msg)
+
+    # retrieving csrf cookie and middle token
+    cookie2 = cookie_jar(msg)
+    token = middle_token(msg)
+    # print(token)
+
+    # creating login body for user
+    body = create_login_body(username, password, token)
+    # print(body)
+    body_len = len(body.encode())
+
+    login_user(sock, login_path, host, body_len, body, cookie_1, cookie2)
+
+    msg = receive_msg(sock)
+    # print(msg)
+
+    # store new cookies
+    cookie3, cookie4 = cookie_jar(msg)
+    # print(cookie3, cookie4)
+
+    # send request to go to my fakebook page
+    send_get_request(fakebook, sock, host, cookie1=cookie3, cookie2=cookie4)
+
+    msg = receive_msg(sock)
+    # print(msg)
+
+    parser = FakebookHTMLParser()
+    parser.feed(msg)
+    #print(fakebook_pages)
+    #print(crawl_pages)
+    #print(visited_links)
+
+    for each in fakebook_pages:
+        send_get_request(each, sock, host, cookie1=cookie3, cookie2=cookie4)
+        msg = receive_msg(sock)
+        #print(msg)
+
+    #create function for queue in
+    i =0
+    while len(crawl_pages) != 0:
+        curr = (crawl_pages.popleft())
+    #while i !=1:
+        #curr = crawl_pages[0]
+        #print(curr)
+        if curr not in visited_links:
+            send_get_request(curr, sock, host, cookie1=cookie3, cookie2=cookie4)
+            msg = receive_msg(sock)
+
+            parser.feed(msg)
+            #getFlag(msg)
+
+            #print(crawl_pages)
+            visited_links.add(curr)
+            i = i+1
+            if len(secret_flags) == 5:
+                break
+
+
+    print(secret_flags)
+
+
+if __name__ == "__main__":
+    main()
