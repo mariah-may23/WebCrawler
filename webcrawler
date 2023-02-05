@@ -12,7 +12,6 @@ from urllib import parse
 from bs4 import BeautifulSoup
 
 visited_links = set()
-fakebook_pages = list()
 crawl_pages = deque()
 secret_flags = list()
 
@@ -26,7 +25,6 @@ class FakebookHTMLParser(HTMLParser):
                 link = attrs[1]  # the fakebook link or accounts/logout link
                 #print(link)
                 if link.startswith("/fakebook"):  # only want to fakebook pages link
-                    fakebook_pages.append(link)
                     #visited_links.add(link)
                     crawl_pages.append(link)
         if tag == "h2":
@@ -223,9 +221,7 @@ def main():
     i =0
     while len(crawl_pages) != 0:
         curr = (crawl_pages.popleft())
-    #while i !=1:
-        #curr = crawl_pages[0]
-        #print(curr)
+    
         if curr not in visited_links:
             send_get_request(curr, sock, host, cookie1=cookie3, cookie2=cookie4)
             msg = receive_msg(sock)
