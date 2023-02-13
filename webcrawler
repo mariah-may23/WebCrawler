@@ -6,10 +6,7 @@ import sys
 import ssl
 from collections import deque
 from html.parser import HTMLParser
-import xml.etree.ElementTree as ET
-from urllib import parse
 
-from bs4 import BeautifulSoup
 
 visited_links = set()
 crawl_pages = deque()
