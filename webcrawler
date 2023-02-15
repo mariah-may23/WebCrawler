@@ -94,18 +94,17 @@ def send_get_request(path, sock, host, cookie1=None, cookie2=None):
 
 
 def receive_msg(sock):
+
     msg = sock.recv(4096).decode()
-    # handle_error(msg)
+
     return msg
 
 
 def cookie_jar(msg):
     msg = msg.split()
-    # print(msg)
     # find index and store first cookie
     idx = msg.index("Set-Cookie:")
     first_cookie = msg[idx + 1].strip(";")
-    # print(first_cookie)
 
     try:  # try finding second cookie, if there is only one, then an error will occur
         msg = msg[idx + 1:]
@@ -143,21 +142,30 @@ def login_user(sock, path, host, body_len, body, cookie1, cookie2):
                f'Content-Length: {body_len}\r\n' \
                f'Cookie: {cookie2}; {cookie1}\r\n\r\n' \
                f'{body}'
-    # print(post_msg)
     sock.send(post_msg.encode())
+
+
+'''
+This method implements the basic web crawler for this program. 
+We use the HTML Parser object to parse through the current URL in search for more URLs and/or secret flags until all 
+secret flags are found for the user. 
+Also accounts for and appropriately handles different errors received on parsing through pages.
+'''
 
 
 def start_crawling(msg, sock, host, cookie3, cookie4):
     parser = FakebookHTMLParser()
+    # feed the response to get the first set of URLs in the queue
     parser.feed(msg)
+    # keep crawling until all flags are found or queue is empty
     while len(crawl_pages) != 0:
+        # get the first site to be visited
         curr = (crawl_pages.popleft())
 
         if curr not in visited_links:
             send_get_request(curr, sock, host, cookie1=cookie3, cookie2=cookie4)
             msg = receive_msg(sock)
             error = handle_error(msg)
-
             # if error code 2 - don't do anything
             if error == 2:
                 pass
@@ -165,28 +173,56 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
             elif error == 4:
                 visited_links.add(curr)
                 continue
-            # if 500 error code - add it back to the list to be requested again
+            # if 500 error code - add it back to the queue to be requested again
             elif error == 5:
                 crawl_pages.append(curr)
                 continue
-            # if error code 302 - grab new URL and visit page
+            # if error code 302 - grab new URL and request again
             elif error == 3:
-                handle_err3()
+                redirected_url = handle_err3(msg)
+                # add redirected URL to queue if location is present
+                if redirected_url != "":
+                    crawl_pages.append(redirected_url)
 
+            # feed the msg to parser to search for more links and secret flags
             parser.feed(msg)
+            # after the site has been parsed, add it to the set of visited links
             visited_links.add(curr)
-            # i = i + 1
+            # if we have all the secret flags then end the program
             if len(secret_flags) == 5:
                 break
 
 
-def handle_err3():
-    pass
+def handle_err3(msg):
+    # break msg into three parts - header, spacing, body
+    msg = msg.partition('\r\n\r\n')
+
+    # store only the header
+    header = msg[0]
+    redirect_url = ""
+    # search for redirected link
+    for h in header.split('\r\n'):
+        if h.startswith("Location: "):
+            redirect_url = h.split()[1]
+
+    return redirect_url
+
+
+'''
+This method returns the appropriate code values indicating the type of error occurred so that it can be handled 
+appropriately. Different status codes are: 
+200 - everything is okay.
+301 - Moved Permanently: This is known as an HTTP redirect. 
+Your crawler should try the request again using the new URL given by the server.
+403 - Forbidden and 404 - Not Found: In this case, your crawler should abandon the URL that generated the error code.
+500 - Internal Server Error: Indicates that the Server could not or would not handle the request from the client. 
+In this case, your crawler should re-try the request for the URL until the request is successful. 
+Our web server may randomly return this error code to your crawler.
+'''
 
 
 def handle_error(msg):
     msg = msg.split()[1]
-
     if msg == "200":
         return 2
     elif msg == "302":
@@ -207,7 +243,10 @@ def main():
     fakebook = "/fakebook/"
     login_path = "/accounts/login/?next=/fakebook/"
 
+    # Parse the username and password from the command line
     username, password = parse_cmd_line()
+
+    # Create TLS wrapped socket
     sock = create_socket()
 
     # get the root page
@@ -215,7 +254,6 @@ def main():
 
     # check the received message
     msg = receive_msg(sock)
-    # print(msg)
 
     # store session cookie
     cookie_1 = cookie_jar(msg)
@@ -225,35 +263,29 @@ def main():
 
     # check message for login page
     msg = receive_msg(sock)
-    # print(msg)
-    # print(msg.split())
 
     # retrieving csrf cookie and middle token
     cookie2 = cookie_jar(msg)
     token = middle_token(msg)
-    # print(token)
 
     # creating login body for user
     body = create_login_body(username, password, token)
-    # print(body)
     body_len = len(body.encode())
 
+    # login user
     login_user(sock, login_path, host, body_len, body, cookie_1, cookie2)
-
     msg = receive_msg(sock)
-    # print(msg)
 
     # store new cookies
     cookie3, cookie4 = cookie_jar(msg)
-    # print(cookie3, cookie4)
 
     # send request to go to my fakebook page
     send_get_request(fakebook, sock, host, cookie1=cookie3, cookie2=cookie4)
-
     msg = receive_msg(sock)
-    # print(msg)
 
+    # start our crawler
     start_crawling(msg, sock, host, cookie3, cookie4)
+
 
     sock.close()
 
