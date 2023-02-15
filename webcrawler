@@ -185,14 +185,17 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
                 pass
             # if error code 403 or 404 - abandon URL
             elif error == 4:
+                print(4)
                 visited_links.add(curr)
                 continue
             # if 500 error code - add it back to the queue to be requested again
             elif error == 5:
+                print(5)
                 crawl_pages.append(curr)
                 continue
             # if error code 302 - grab new URL and request again
             elif error == 3:
+                print(3)
                 redirected_url = handle_err3(msg)
                 # add redirected URL to queue if location is present
                 if redirected_url != "":
@@ -253,7 +256,7 @@ def handle_error(msg):
         return 4
     elif msg == "404":
         return 4
-    elif msg == "500" or "501":
+    elif msg == "500":
         return 5
 
 
@@ -312,3 +315,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    
