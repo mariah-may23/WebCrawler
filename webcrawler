@@ -255,7 +255,7 @@ def handle_error(msg):
         return 4
     elif msg == "404":
         return 4
-    elif msg == "500":
+    elif msg == "500" or "501":
         return 5
 
 
