@@ -7,44 +7,57 @@ import ssl
 from collections import deque
 from html.parser import HTMLParser
 
+# set to keep a track of unique URLs already crawled
 visited_links = set()
+# a queue to keep track of URLs to be crawled
 crawl_pages = deque()
-secret_flags = list()
+# set of unique secret flags found in the pages
+secret_flags = set()
+
+'''
+The FakebookHTMLParser extends the HTML Parser to parse through the response for 'a' tags and 'h2' tags in search of 
+more URLs and/or secret flags respectively.
+It also extracts the content of the 'h2' flags to get the content in between the tag i.e. the secret flag.
+'''
 
 
 class FakebookHTMLParser(HTMLParser):
-    is_h2 = False
-    accumulated_data = ''
+
+    def __init__(self):
+        super().__init__()
+        self.is_h2 = False
+        self.data = ''
 
     def handle_starttag(self, tag, attrs):
-
         if tag == 'a':  # only looking at the links tags
             for attrs in attrs:  # attrs will be the href and the link in a tuple
-                # print(attrs)
                 link = attrs[1]  # the fakebook link or accounts/logout link
-                # print(link)
                 if link.startswith("/fakebook"):  # only want to fakebook pages link
-                    # visited_links.add(link)
-                    crawl_pages.append(link)
+                    crawl_pages.append(link)  # add to the queue of URLs to be crawled
 
-        if tag == "h2":
+        if tag == "h2":  # only interested in getting secret flags under h2
             for attributes in attrs:
-                if "secret_flag" in attributes:
+                if "secret_flag" in attributes:  # if secret flags under the attributes then set flag to found-- true
                     self.is_h2 = True
 
     def handle_endtag(self, tag):
-        if tag == 'h2':
+        if tag == 'h2':  # after finding end tag, set found flag to false
             self.is_h2 = False
-            if self.accumulated_data != '':
-                flag = self.accumulated_data.split()
-                # print(flag)
-                secret_flags.append(flag[1])
+            if self.data != '':  # if data has content then parse it to print and get the secret flag
+                flag = self.data.split()
+                secret_flags.add(flag[1])  # add secret flag to the set of flags
                 print(flag[1])
-            self.accumulated_data = ''
+            self.data = ''  # set data to empty string for next secret flag
 
-    def handle_data(self, data):
+    def handle_data(self, data):  # this collects the content between the h2 tag
         if self.is_h2:
-            self.accumulated_data += data
+            self.data += data
+
+
+'''
+This method parses the command line arguments to get the username and password for the user in question.
+It also throws appropriate errors for missing arguments.
+'''
 
 
 def parse_cmd_line():
@@ -52,27 +65,36 @@ def parse_cmd_line():
     username = ""
     password = ""
 
-    file_name = sys.argv[0]
-    username = sys.argv[1]
-    password = sys.argv[2]
+    try:
+        file_name = sys.argv[0]
+        username = sys.argv[1]
+        password = sys.argv[2]
+        return username, password
 
-    return username, password
+    except:
+        if username == "":
+            sys.exit("Please provide appropriate user name.")
+        if password == "":
+            sys.exit("Please provide appropriate password.")
+
+
+'''
+This method creates a TLS wrapped socket to create a connection to http server.
+'''
 
 
 def create_socket():
     port = 443
-
+    host_name = 'project2.5700.network'
     # http is based on TCP so create a TCP/IP socket
     # building connection
-
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
         context = ssl.create_default_context()
-        sock = socket.create_connection(('project2.5700.network', port))
+        sock = socket.create_connection((host_name, port))
         wrapped_socket = context.wrap_socket(sock, server_hostname='project2.5700.network')
         return wrapped_socket
     except socket.error:
-        sys.exit("Connection error")
+        sys.exit("Connection error.")
 
 
 def send_get_request(path, sock, host, cookie1=None, cookie2=None):
@@ -89,14 +111,11 @@ def send_get_request(path, sock, host, cookie1=None, cookie2=None):
               f'{host}\r\n' \
               f'Cookie: {cookie1}; {cookie2}\r\n\r\n'
 
-    # print(msg)
     sock.send(msg.encode())
 
 
 def receive_msg(sock):
-
     msg = sock.recv(4096).decode()
-
     return msg
 
 
@@ -118,13 +137,11 @@ def cookie_jar(msg):
 
 def middle_token(msg):
     msg = msg.split()
-    # print(msg)
     index = msg.index('name="csrfmiddlewaretoken"')
     token = msg[index + 1]
     token = token.split("=")
     token = token[1].replace('"', '')
     token = token.replace(">", "")
-    # print(token)
     return token
 
 
@@ -162,7 +179,7 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
         # get the first site to be visited
         curr = (crawl_pages.popleft())
 
-        if curr not in visited_links:
+        if curr not in visited_links:  # if URL has not been visited 
             send_get_request(curr, sock, host, cookie1=cookie3, cookie2=cookie4)
             msg = receive_msg(sock)
             error = handle_error(msg)
@@ -191,6 +208,12 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
             # if we have all the secret flags then end the program
             if len(secret_flags) == 5:
                 break
+
+
+'''
+This method is designed to handle error 301 which is Moved Permanently: This is known as an HTTP redirect. 
+The method extracts the URL from the server response and sends it back to the crawler.
+'''
 
 
 def handle_err3(msg):
@@ -286,7 +309,7 @@ def main():
     # start our crawler
     start_crawling(msg, sock, host, cookie3, cookie4)
 
-
+    # close the socket - program end
     sock.close()
 
 
