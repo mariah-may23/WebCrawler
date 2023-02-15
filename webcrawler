@@ -7,7 +7,6 @@ import ssl
 from collections import deque
 from html.parser import HTMLParser
 
-
 visited_links = set()
 crawl_pages = deque()
 secret_flags = list()
@@ -31,12 +30,7 @@ class FakebookHTMLParser(HTMLParser):
         if tag == "h2":
             for attributes in attrs:
                 if "secret_flag" in attributes:
-                    # secret_flags.append("1")
                     self.is_h2 = True
-                    # print("YES******************************************************")
-                    # tree = ET.parse(self.msg.encode())
-                    # print(tree.toS)
-                    # print(tree.getroot())
 
     def handle_endtag(self, tag):
         if tag == 'h2':
@@ -101,7 +95,7 @@ def send_get_request(path, sock, host, cookie1=None, cookie2=None):
 
 def receive_msg(sock):
     msg = sock.recv(4096).decode()
-    handle_error(msg)
+    # handle_error(msg)
     return msg
 
 
@@ -162,32 +156,49 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
         if curr not in visited_links:
             send_get_request(curr, sock, host, cookie1=cookie3, cookie2=cookie4)
             msg = receive_msg(sock)
+            error = handle_error(msg)
+
+            # if error code 2 - don't do anything
+            if error == 2:
+                pass
+            # if error code 403 or 404 - abandon URL
+            elif error == 4:
+                visited_links.add(curr)
+                continue
+            # if 500 error code - add it back to the list to be requested again
+            elif error == 5:
+                crawl_pages.append(curr)
+                continue
+            # if error code 302 - grab new URL and visit page
+            elif error == 3:
+                handle_err3()
 
             parser.feed(msg)
-
-            # print(crawl_pages)
             visited_links.add(curr)
             # i = i + 1
             if len(secret_flags) == 5:
                 break
 
 
+def handle_err3():
+    pass
+
+
 def handle_error(msg):
-    # print(msg)
     msg = msg.split()[1]
-    # print(msg)
-    if msg == "200" or "302":
-        pass
+
+    if msg == "200":
+        return 2
+    elif msg == "302":
+        return 2
     elif msg == "301":
-        sys.exit("Error 301 Occurred. Exiting program")
+        return 3
     elif msg == "403":
-        sys.exit("Error 403 Occurred. Exiting program")
+        return 4
     elif msg == "404":
-        sys.exit("Error 404 Occurred. Exiting program")
-    elif msg == "500":
-        sys.exit("Error 500 Occurred. Exiting program")
-    else:
-        sys.exit("Unknown error Occurred. Exiting program")
+        return 4
+    elif msg == "500" or "501":
+        return 5
 
 
 def main():
@@ -197,7 +208,6 @@ def main():
     login_path = "/accounts/login/?next=/fakebook/"
 
     username, password = parse_cmd_line()
-    # print(username, password)
     sock = create_socket()
 
     # get the root page
@@ -244,21 +254,6 @@ def main():
     # print(msg)
 
     start_crawling(msg, sock, host, cookie3, cookie4)
-
-    # print(fakebook_pages)
-    # print(crawl_pages)
-    # print(visited_links)
-
-    # for each in fakebook_pages:
-    #   send_get_request(each, sock, host, cookie1=cookie3, cookie2=cookie4)
-    #  msg = receive_msg(sock)
-    # print(msg)
-
-    # create function for queue in
-    # i =0
-
-    # print(type(msg))
-    # print(secret_flags)
 
     sock.close()
 
