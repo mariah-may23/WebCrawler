@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+v#!/usr/bin/env python3
 
 import cgi
 import socket
@@ -116,7 +116,7 @@ def receive_msg(sock):
     """Receive the message in a loop based on the content length given in the header"""
     msg = sock.recv(4096).decode()
     length = getContent_length(msg)
-        while True:
+    while True:
         if length == "0":
             break
         elif not msg.endswith('</html>\n'):
@@ -124,8 +124,8 @@ def receive_msg(sock):
         else:
             break
     return msg
-    
-    
+
+
 def getContent_length(msg):
     """Extracts the content length of the URL"""
     if "Content-Length:" in msg:
@@ -317,3 +317,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+    
