@@ -22,11 +22,8 @@ It also extracts the content of the 'h2' flags to get the content in between the
 
 
 class FakebookHTMLParser(HTMLParser):
-
-    def __init__(self):
-        super().__init__()
-        self.is_h2 = False
-        self.data = ''
+    is_h2 = False
+    acc_data = ''
 
     def handle_starttag(self, tag, attrs):
         if tag == 'a':  # only looking at the links tags
@@ -43,15 +40,15 @@ class FakebookHTMLParser(HTMLParser):
     def handle_endtag(self, tag):
         if tag == 'h2':  # after finding end tag, set found flag to false
             self.is_h2 = False
-            if self.data != '':  # if data has content then parse it to print and get the secret flag
-                flag = self.data.split()
+            if self.acc_data != '':  # if data has content then parse it to print and get the secret flag
+                flag = self.acc_data.split()
                 secret_flags.add(flag[1])  # add secret flag to the set of flags
                 print(flag[1])
-            self.data = ''  # set data to empty string for next secret flag
+            self.acc_data = ''  # set data to empty string for next secret flag
 
     def handle_data(self, data):  # this collects the content between the h2 tag
         if self.is_h2:
-            self.data += data
+            self.acc_data += data
 
 
 '''
@@ -179,7 +176,7 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
         # get the first site to be visited
         curr = (crawl_pages.popleft())
 
-        if curr not in visited_links:  # if URL has not been visited 
+        if curr not in visited_links:  # if URL has not been visited
             send_get_request(curr, sock, host, cookie1=cookie3, cookie2=cookie4)
             msg = receive_msg(sock)
             error = handle_error(msg)
