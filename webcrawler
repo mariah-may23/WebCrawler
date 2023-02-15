@@ -7,35 +7,45 @@ import ssl
 from collections import deque
 from html.parser import HTMLParser
 
-# set to keep a track of unique URLs already crawled
+# tracks unique URLs already crawled
 visited_links = set()
-# a queue to keep track of URLs to be crawled
+# a queue to track URLs to be crawled
 crawl_pages = deque()
 # set of unique secret flags found in the pages
 secret_flags = set()
-
-'''
-The FakebookHTMLParser extends the HTML Parser to parse through the response for 'a' tags and 'h2' tags in search of 
-more URLs and/or secret flags respectively.
-It also extracts the content of the 'h2' flags to get the content in between the tag i.e. the secret flag.
-'''
+# holds the middlewaretoken
+token_list = list()
 
 
 class FakebookHTMLParser(HTMLParser):
+    """
+    The FakebookHTMLParser extends the HTML Parser to parse through the response for 'a'/'h2'/'input' tags in search of
+    more URLs and/or secret flags respectively.
+    It also extracts the content of the 'h2' flags to get the content in between the tag i.e. the secret flag.
+    """
     is_h2 = False
     acc_data = ''
+    token = False
 
     def handle_starttag(self, tag, attrs):
         if tag == 'a':  # only looking at the links tags
-            for attrs in attrs:  # attrs will be the href and the link in a tuple
-                link = attrs[1]  # the fakebook link or accounts/logout link
-                if link.startswith("/fakebook"):  # only want to fakebook pages link
+            for attrs in attrs:
+                link = attrs[1]
+                if link.startswith("/fakebook"):
                     crawl_pages.append(link)  # add to the queue of URLs to be crawled
 
         if tag == "h2":  # only interested in getting secret flags under h2
             for attributes in attrs:
                 if "secret_flag" in attributes:  # if secret flags under the attributes then set flag to found-- true
                     self.is_h2 = True
+
+        if tag == 'input':
+            for attrs in attrs:
+                if self.token:  # this line contains the csfrmiddlewaretoken
+                    token_list.append(attrs[1])
+                    self.token = False
+                if attrs[1] == "csrfmiddlewaretoken":  # the token will follow this attrs so we set to true
+                    self.token = True
 
     def handle_endtag(self, tag):
         if tag == 'h2':  # after finding end tag, set found flag to false
@@ -44,8 +54,8 @@ class FakebookHTMLParser(HTMLParser):
                 flag = self.acc_data.split()
                 f = flag[1]
                 if f not in secret_flags:
-                    secret_flags.add(flag[1])  # add secret flag to the set of flags
-                    print(flag[1])
+                    secret_flags.add(f)  # add secret flag to the set of flags
+                    print(f)
             self.acc_data = ''  # set data to empty string for next secret flag
 
     def handle_data(self, data):  # this collects the content between the h2 tag
@@ -53,19 +63,12 @@ class FakebookHTMLParser(HTMLParser):
             self.acc_data += data
 
 
-'''
-This method parses the command line arguments to get the username and password for the user in question.
-It also throws appropriate errors for missing arguments.
-'''
-
-
 def parse_cmd_line():
-    args_cmd = sys.argv
+    """ Parses the command line arguments for username and password. Throws error for invalid info"""
     username = ""
     password = ""
 
     try:
-        file_name = sys.argv[0]
         username = sys.argv[1]
         password = sys.argv[2]
         return username, password
@@ -77,15 +80,11 @@ def parse_cmd_line():
             sys.exit("Please provide appropriate password.")
 
 
-'''
-This method creates a TLS wrapped socket to create a connection to http server.
-'''
-
-
 def create_socket():
+    """Creates a TLS wrapped socket to create a connection to http server. """
     port = 443
     host_name = 'project2.5700.network'
-    # http is based on TCP so create a TCP/IP socket
+
     # building connection
     try:
         context = ssl.create_default_context()
@@ -97,10 +96,10 @@ def create_socket():
 
 
 def send_get_request(path, sock, host, cookie1=None, cookie2=None):
+    """ Sends get requests to the server, using all necessary header fields with HTTP1.1"""
     if cookie1 is None and cookie2 is None:  # no cookies given
         msg = f'GET {path} HTTP/1.1\r\n' \
               f'{host}\r\n\r\n'
-        # print(msg)
     elif cookie2 is None:  # only cookie 1 given
         msg = f'GET {path} HTTP/1.1\r\n' \
               f'{host}\r\n' \
@@ -114,37 +113,33 @@ def send_get_request(path, sock, host, cookie1=None, cookie2=None):
 
 
 def receive_msg(sock):
+    """Receive the message in a loop based on the content length given in the header"""
+
     msg = sock.recv(4096).decode()
     return msg
 
 
 def cookie_jar(msg):
-    msg = msg.split()
-    # find index and store first cookie
-    idx = msg.index("Set-Cookie:")
-    first_cookie = msg[idx + 1].strip(";")
+    """Stores the session and/or the csrf cookies"""
+    first_cookie = None
+    # break msg into three parts - header, spacing, body
+    msg = msg.partition('\r\n\r\n')
 
-    try:  # try finding second cookie, if there is only one, then an error will occur
-        msg = msg[idx + 1:]
-        second_index = msg.index("Set-Cookie:")
-        second_cookie = msg[second_index + 1].strip(";")
-    except:  # error, meaning only 1 cookie exists
-        return first_cookie
+    # store only the header
+    header = msg[0]
 
-    return first_cookie, second_cookie
-
-
-def middle_token(msg):
-    msg = msg.split()
-    index = msg.index('name="csrfmiddlewaretoken"')
-    token = msg[index + 1]
-    token = token.split("=")
-    token = token[1].replace('"', '')
-    token = token.replace(">", "")
-    return token
+    # search for cookies
+    for h in header.split('\r\n'):
+        if h.startswith("Set-Cookie: "):
+            if first_cookie is not None:  # if there is already one cookie then grab the second
+                second_cookie = h.split()[1].strip(";")
+                return first_cookie, second_cookie
+            first_cookie = h.split()[1].strip(";")
+    return first_cookie  # only one cookie obtained
 
 
 def create_login_body(username, password, token):
+    """Creating the body of the user's login POST request"""
     return f'username={username}&' \
            f'password={password}&' \
            f'csrfmiddlewaretoken={token}&' \
@@ -152,6 +147,7 @@ def create_login_body(username, password, token):
 
 
 def login_user(sock, path, host, body_len, body, cookie1, cookie2):
+    """POST request to log user into fakebook"""
     post_msg = f'POST {path} HTTP/1.1\r\n' \
                f'{host}\r\n' \
                'Content-Type: application/x-www-form-urlencoded\r\n' \
@@ -161,15 +157,13 @@ def login_user(sock, path, host, body_len, body, cookie1, cookie2):
     sock.send(post_msg.encode())
 
 
-'''
-This method implements the basic web crawler for this program. 
-We use the HTML Parser object to parse through the current URL in search for more URLs and/or secret flags until all 
-secret flags are found for the user. 
-Also accounts for and appropriately handles different errors received on parsing through pages.
-'''
-
-
 def start_crawling(msg, sock, host, cookie3, cookie4):
+    """
+    Implements the basic web crawler for this program.
+    We use the HTML Parser object to parse through the current URL in search for more URLs and/or secret flags until all
+    secret flags are found for the user.
+    Also accounts for and appropriately handles different errors received on parsing through pages.
+    """
     parser = FakebookHTMLParser()
     # feed the response to get the first set of URLs in the queue
     parser.feed(msg)
@@ -182,22 +176,16 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
             send_get_request(curr, sock, host, cookie1=cookie3, cookie2=cookie4)
             msg = receive_msg(sock)
             error = handle_error(msg)
-            # if error code 2 - don't do anything
-            if error == 2:
+
+            if error == 2:  # don't do anything
                 pass
-            # if error code 403 or 404 - abandon URL
-            elif error == 4:
-                #print(4)
+            elif error == 4:  # abandon URL
                 visited_links.add(curr)
                 continue
-            # if 500 error code - add it back to the queue to be requested again
-            elif error == 5:
-                #print(5)
+            elif error == 5:  # add it back to the queue to be requested again
                 crawl_pages.append(curr)
                 continue
-            # if error code 302 - grab new URL and request again
-            elif error == 3:
-                #print(3)
+            elif error == 3:  # grab new URL and request again
                 redirected_url = handle_err3(msg)
                 # add redirected URL to queue if location is present
                 if redirected_url != "":
@@ -212,13 +200,11 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
                 break
 
 
-'''
-This method is designed to handle error 301 which is Moved Permanently: This is known as an HTTP redirect. 
-The method extracts the URL from the server response and sends it back to the crawler.
-'''
-
-
 def handle_err3(msg):
+    """
+    This method is designed to handle error 301 which is Moved Permanently: This is known as an HTTP redirect.
+    The method extracts the URL from the server response and sends it back to the crawler.
+    """
     # break msg into three parts - header, spacing, body
     msg = msg.partition('\r\n\r\n')
 
@@ -233,20 +219,15 @@ def handle_err3(msg):
     return redirect_url
 
 
-'''
-This method returns the appropriate code values indicating the type of error occurred so that it can be handled 
-appropriately. Different status codes are: 
-200 - everything is okay.
-301 - Moved Permanently: This is known as an HTTP redirect. 
-Your crawler should try the request again using the new URL given by the server.
-403 - Forbidden and 404 - Not Found: In this case, your crawler should abandon the URL that generated the error code.
-500 - Internal Server Error: Indicates that the Server could not or would not handle the request from the client. 
-In this case, your crawler should re-try the request for the URL until the request is successful. 
-Our web server may randomly return this error code to your crawler.
-'''
-
-
 def handle_error(msg):
+    """
+    Returns the appropriate code values indicating the type of error occurred so that it can be handled.
+    Different status codes are:
+    200 - everything is okay.
+    301 - Moved Permanently: This is known as an HTTP redirect.
+    403 - Forbidden and 404 - Not Found
+    500 - Internal Server Error: Indicates that the Server could not or would not handle the request from the client.
+    """
     msg = msg.split()[1]
     if msg == "200":
         return 2
@@ -291,7 +272,10 @@ def main():
 
     # retrieving csrf cookie and middle token
     cookie2 = cookie_jar(msg)
-    token = middle_token(msg)
+
+    parser = FakebookHTMLParser()
+    parser.feed(msg)
+    token = token_list[0]
 
     # creating login body for user
     body = create_login_body(username, password, token)
