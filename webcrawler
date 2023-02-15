@@ -114,9 +114,25 @@ def send_get_request(path, sock, host, cookie1=None, cookie2=None):
 
 def receive_msg(sock):
     """Receive the message in a loop based on the content length given in the header"""
-
     msg = sock.recv(4096).decode()
+    length = getContent_length(msg)
+        while True:
+        if length == "0":
+            break
+        elif not msg.endswith('</html>\n'):
+            msg += sock.recv(4096).decode()
+        else:
+            break
     return msg
+    
+    
+def getContent_length(msg):
+    """Extracts the content length of the URL"""
+    if "Content-Length:" in msg:
+        m = msg.split()
+        idx = m.index("Content-Length:")
+        length = m[idx + 1]
+        return length
 
 
 def cookie_jar(msg):
