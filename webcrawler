@@ -42,8 +42,10 @@ class FakebookHTMLParser(HTMLParser):
             self.is_h2 = False
             if self.acc_data != '':  # if data has content then parse it to print and get the secret flag
                 flag = self.acc_data.split()
-                secret_flags.add(flag[1])  # add secret flag to the set of flags
-                print(flag[1])
+                f = flag[1]
+                if f not in secret_flags:
+                    secret_flags.add(flag[1])  # add secret flag to the set of flags
+                    print(flag[1])
             self.acc_data = ''  # set data to empty string for next secret flag
 
     def handle_data(self, data):  # this collects the content between the h2 tag
@@ -185,17 +187,17 @@ def start_crawling(msg, sock, host, cookie3, cookie4):
                 pass
             # if error code 403 or 404 - abandon URL
             elif error == 4:
-                print(4)
+                #print(4)
                 visited_links.add(curr)
                 continue
             # if 500 error code - add it back to the queue to be requested again
             elif error == 5:
-                print(5)
+                #print(5)
                 crawl_pages.append(curr)
                 continue
             # if error code 302 - grab new URL and request again
             elif error == 3:
-                print(3)
+                #print(3)
                 redirected_url = handle_err3(msg)
                 # add redirected URL to queue if location is present
                 if redirected_url != "":
@@ -315,5 +317,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-    
